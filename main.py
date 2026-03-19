@@ -3,9 +3,7 @@ import os
 import threading
 import yt_dlp
 import time
-import asyncio
 
-# Logger para evitar saturación de consola en Android
 class MyLogger:
     def debug(self, msg): pass
     def info(self, msg): pass
@@ -13,18 +11,17 @@ class MyLogger:
     def error(self, msg): print(f"Error: {msg}")
 
 def main(page: ft.Page):
-    # --- CONFIGURACIÓN DE LA PÁGINA ---
-    page.title = "VDSoft v4.6 Pro"
+    # --- CONFIGURACIÓN DE PÁGINA ---
+    page.title = "VDSoft v4.7 Pro"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#121212"
     page.scroll = ft.ScrollMode.ADAPTIVE
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-    # Padding superior para evitar choque con la barra de tareas
     page.padding = ft.padding.only(top=60, left=20, right=20, bottom=20)
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
 
     is_android = os.path.exists("/system/bin/app_process")
 
-    # --- CONTROLES DE INTERFAZ ---
+    # --- CONTROLES UI ---
     url_input = ft.TextField(
         label="Enlace (YouTube, TikTok, FB, Pinterest)", 
         border_color="#00B0FF",
@@ -33,16 +30,21 @@ def main(page: ft.Page):
         hint_text="Pega el link aquí..."
     )
 
-    # Función de pegar corregida (Asíncrona para Android)
-    async def paste_link(e):
-        try:
-            value = await page.get_clipboard_async()
-            if value:
-                url_input.value = value
-                page.update()
-        except Exception:
-            status_label.value = "Error al acceder al portapapeles"
+    # Pegar corregido para máxima compatibilidad
+    def paste_link(e):
+        clipboard_data = page.get_clipboard()
+        if clipboard_data:
+            url_input.value = clipboard_data
             page.update()
+        else:
+            # Si el método normal falla, intentamos el asíncrono silencioso
+            async def get_async():
+                val = await page.get_clipboard_async()
+                if val: 
+                    url_input.value = val
+                    page.update()
+            import asyncio
+            threading.Thread(target=lambda: asyncio.run(get_async()), daemon=True).start()
 
     btn_paste = ft.IconButton(
         icon=ft.Icons.PASTE_ROUNDED, 
@@ -64,34 +66,30 @@ def main(page: ft.Page):
     status_label = ft.Text("Listo", color="grey", size=12)
     history_list = ft.ListView(expand=True, spacing=10, height=150)
 
-    # --- LÓGICA DE LIMPIEZA AUTOMÁTICA ---
-    def clean_ui():
-        time.sleep(4) # Tiempo para que el usuario vea el mensaje de éxito
+    # --- LÓGICA DE LIMPIEZA ---
+    def auto_clean():
+        time.sleep(4)
         url_input.value = ""
         progress_bar.value = 0
-        status_label.value = "Listo para el siguiente enlace"
+        status_label.value = "Listo para el siguiente"
         status_label.color = "grey"
         page.update()
 
-    # --- LÓGICA DE DESCARGA MULTISOCIAL ---
+    # --- MOTOR DE DESCARGA MEJORADO (PINTEREST FIX) ---
     def run_download(url, quality):
-        # Ruta de guardado estándar en Android
         save_path = "/storage/emulated/0/Download/VDSoft" if is_android else "Descargas_VDSoft"
-        if not os.access(os.path.dirname(save_path), os.W_OK):
-            save_path = "./" # Fallback a carpeta local si no hay permisos
-
         if not os.path.exists(save_path):
             try: os.makedirs(save_path, exist_ok=True)
-            except: pass
+            except: save_path = "./"
 
         ydl_opts = {
             'format': 'best' if quality == "720" else 'bestaudio/best',
             'outtmpl': f'{save_path}/%(title)s.%(ext)s',
-            'progress_hooks': [lambda d: progress_update(d)],
             'logger': MyLogger(),
             'noplaylist': True,
-            # User Agent para evitar bloqueos de red social
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            # User Agent específico para evitar el bloqueo de Pinterest y FB
+            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36',
+            'progress_hooks': [lambda d: progress_update(d)],
         }
 
         def progress_update(d):
@@ -105,12 +103,11 @@ def main(page: ft.Page):
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                status_label.value = "Analizando enlace..."
+                status_label.value = "Conectando..."
                 page.update()
                 info = ydl.extract_info(url, download=True)
-                title = info.get('title', 'Multimedia')
+                title = info.get('title', 'Video Social')
                 
-                # Agregar al historial
                 history_list.controls.insert(0, ft.ListTile(
                     leading=ft.Icon(ft.Icons.CHECK_CIRCLE, color="#00E5FF"),
                     title=ft.Text(title[:25]+"...", size=12, color="white")
@@ -118,30 +115,28 @@ def main(page: ft.Page):
                 status_label.value = "¡Descarga completada!"
                 status_label.color = "#00E5FF"
                 page.update()
-                
-                # Disparar limpieza de interfaz
-                threading.Thread(target=clean_ui, daemon=True).start()
+                threading.Thread(target=auto_clean, daemon=True).start()
 
-        except Exception:
-            status_label.value = "Error: Enlace no compatible o privado"
+        except Exception as e:
+            status_label.value = "Error: Enlace protegido o inválido"
             status_label.color = "red"
             page.update()
 
     def start_download(e):
         if url_input.value:
-            status_label.value = "Iniciando proceso..."
-            status_label.color = "grey"
+            status_label.value = "Analizando..."
             page.update()
             threading.Thread(target=run_download, args=(url_input.value, quality_dropdown.value), daemon=True).start()
 
-    # --- BOTÓN DE PAYPAL (FORMATO DONACIÓN) ---
+    # --- PAYPAL MEJORADO ---
     def go_paypal(e):
-        page.launch_url("https://www.paypal.com/donate/?business=smithsanchez2807@gmail.com&no_recurring=0&currency_code=USD")
+        # Enlace de transferencia directa (Más efectivo que el de donación en móviles)
+        page.launch_url("https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=smithsanchez2807@gmail.com&item_name=Apoyo+VDSoft+Pro&currency_code=USD")
 
-    # --- CONSTRUCCIÓN DE LA VISTA ---
+    # --- DISEÑO ---
     page.add(
         ft.Column([
-            ft.Text("VDSoft Pro v4.6", size=32, weight="bold", color="#00B0FF"),
+            ft.Text("VDSoft Pro v4.7", size=32, weight="bold", color="#00B0FF"),
             ft.Text("YouTube • TikTok • FB • Pinterest", size=12, color="grey"),
             ft.Container(height=15),
             ft.Row([url_input, btn_paste], alignment="center"),
@@ -151,8 +146,7 @@ def main(page: ft.Page):
             status_label,
             ft.ElevatedButton(
                 "DESCARGAR", 
-                width=380, 
-                height=50, 
+                width=380, height=50, 
                 on_click=start_download,
                 style=ft.ButtonStyle(bgcolor="#00B0FF", color="white")
             ),
@@ -161,7 +155,7 @@ def main(page: ft.Page):
             ft.Container(content=history_list, bgcolor="#1e1e1e", border_radius=10, padding=10),
             ft.Container(height=10),
             ft.ElevatedButton(
-                "Donar al Proyecto (PayPal)", 
+                "Apoyar proyecto (PayPal)", 
                 icon=ft.Icons.FAVORITE, 
                 on_click=go_paypal,
                 style=ft.ButtonStyle(bgcolor="#003087", color="white")
@@ -171,5 +165,4 @@ def main(page: ft.Page):
     )
 
 if __name__ == "__main__":
-    # Importante: Asegúrate de tener la carpeta /assets con icon.png
     ft.app(target=main, assets_dir="assets")
