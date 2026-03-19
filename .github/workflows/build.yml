@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - dest: checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -18,10 +18,10 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install Flet
+      - name: Install Dependencies
         run: pip install flet yt-dlp
 
-      - name: Flet Build APK
+      - name: Build APK
         run: flet build apk --org com.vdsoft --product "VDSoft_Downloader"
 
       - name: Upload APK
