@@ -1,0 +1,31 @@
+name: Build APK
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - dest: checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Flet
+        run: pip install flet yt-dlp
+
+      - name: Flet Build APK
+        run: flet build apk --org com.vdsoft --product "VDSoft_Downloader"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vdsoft-apk
+          path: build/apk/*.apk
